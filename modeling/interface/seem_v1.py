@@ -238,16 +238,29 @@ class SEEMDecoder(nn.Module): # predictor of sem_seg_head (xdecoderhead), predic
                 c,h,w = extra['spatial_query_pos_mask'][0].shape
                 divisor = torch.tensor([1,h,w], device=output.device)[None,]
 
+                # Visualzed on ipynb
+                # torch.save(extra['spatial_query_pos_mask'][0], 'extra[spatial_query_pos_mask][0].pt')
+                # torch.save(divisor, 'divisor.pt')
+                # torch.save(self.max_spatial_len, 'max_spatial_len.pt')
+                # logger.info('SUCCESS' * 10)
+                # exit()
+                
                 # Get mean pos spatial query
                 non_zero_pos_point = [rand_sample(m, divisor, self.max_spatial_len[-1]).t() for m in extra['spatial_query_pos_mask']]
+                # torch.save(non_zero_pos_point, 'non_zero_pos_point.pt')
+                # logger.info(non_zero_pos_point.shape)
+                # exit()
                 non_zero_pos_index = [m[:,0:1].long() for m in non_zero_pos_point]
                 non_zero_pos_point = nn.utils.rnn.pad_sequence(non_zero_pos_point, padding_value=-1).permute(1,0,2)
                 non_zero_pos_index = nn.utils.rnn.pad_sequence(non_zero_pos_index, padding_value=-1).permute(1,0,2)[:,:,0]
                 non_zero_pos_mask = (non_zero_pos_point.sum(dim=-1) < 0)
                 spatial_query_pos = point_sample(mask_features, non_zero_pos_point[:,:,1:].flip(dims=(2,)).type(mask_features.dtype), align_corners=True)
                 num_mask_per_batch = [len(m) for m in extra['spatial_query_pos_mask']]
+                # TODO
+                # visual queries
                 spatial_query_pos = nn.utils.rnn.pad_sequence([torch.stack([x[ns==n].mean(dim=0, keepdim=False) if (ns==n).sum() > 0 else -torch.ones((x.shape[1]), device=spatial_query_pos.device) for n in range(mb)]) for x, m, ns, mb in zip(spatial_query_pos.transpose(1,2), ~non_zero_pos_mask, non_zero_pos_index, num_mask_per_batch)], padding_value=-1).nan_to_num()
-
+                # logger.info(spatial_query_pos.shape) 4 1 512
+                
                 # Get mean neg spatial query
                 non_zero_neg_point = [rand_sample(m, divisor, self.max_spatial_len[-1]).t() for m in extra['spatial_query_neg_mask']]
                 non_zero_neg_index = [m[:,0:1].long() for m in non_zero_neg_point]
@@ -287,11 +300,15 @@ class SEEMDecoder(nn.Module): # predictor of sem_seg_head (xdecoderhead), predic
                     spatial_tokens = point_sample(src_mask_features.permute(2,3,0,1), non_zero_query_point.flip(dims=(2,)).type(src_mask_features.dtype), align_corners=True).permute(2,0,1)
                     spatial_tokens[pos_neg_indicator==1] += self.pn_indicator.weight[0:1]
                     spatial_tokens[pos_neg_indicator==-1] += self.pn_indicator.weight[1:2]
-
+                    # TODO
+                    # visual prompts    
+                    # logger.info(f'spatial_tokens.shape {i} : {spatial_tokens.shape}') 512 1 512
+                    
                     src_spatial_queries += [spatial_tokens]
                     src_spatial_maskings += [non_zero_query_mask]
                     src_spatial_indices += [non_zero_query_index]
-
+                
+                # exit()
                 if 'refimg' in task:
                     output_refimg = {}
                     output_refimg['spatial_query_pos'] = spatial_query_pos
@@ -305,6 +322,8 @@ class SEEMDecoder(nn.Module): # predictor of sem_seg_head (xdecoderhead), predic
                 src_spatial_queries = extra['refimg_tokens']['src_spatial_queries']
                 src_spatial_maskings = extra['refimg_tokens']['src_spatial_maskings']
 
+            # logger.info(self.sample_size) 3 
+            # exit()
             # Get object query for spatial index
             self.attention_data.set_extra({"spatial_query_number": len(spatial_query_pos), "sample_size": self.sample_size})
             self.attention_data.set('queries_spatial', 'queries', sample_size=self.sample_size*len(spatial_query_pos))
@@ -313,6 +332,11 @@ class SEEMDecoder(nn.Module): # predictor of sem_seg_head (xdecoderhead), predic
             spatial_output = self.spatial_featured.weight.unsqueeze(1).repeat(1, bs, 1)
             spatial_embed = self.spatial_embed.weight.unsqueeze(1).repeat(1, bs, 1)
             self.attention_data.set('memories_spatial', 'memories', spatial_output, spatial_embed)
+            # TODO
+            # memory prompts
+            # logger.info(spatial_output.shape) # 32 1 512
+            # logger.info(spatial_embed.shape) # 32 1 512
+            # exit()
 
         if self.task_switch['grounding'] and grounding_extra_flag:
             # Get grounding tokens

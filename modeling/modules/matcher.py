@@ -20,6 +20,10 @@ from torch.cuda.amp import autocast
 from .point_features import point_sample    
 from ..language.loss import vl_similarity
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def batch_dice_loss(inputs: torch.Tensor, targets: torch.Tensor):
     """
     Compute the DICE loss, similar to generalized IOU for masks
@@ -62,7 +66,7 @@ def batch_sigmoid_ce_loss(inputs: torch.Tensor, targets: torch.Tensor):
     neg = F.binary_cross_entropy_with_logits(
         inputs, torch.zeros_like(inputs), reduction="none"
     )
-
+    
     loss = torch.einsum("nc,mc->nm", pos, targets) + torch.einsum(
         "nc,mc->nm", neg, (1 - targets)
     )
@@ -114,9 +118,13 @@ class HungarianMatcher(nn.Module):
 
         # Iterate through batch size
         for b in range(bs):
-            out_prob = outputs["pred_logits"][b].softmax(-1)  # [num_queries, num_classes]
-            tgt_ids = targets[b]["labels"]
-
+            out_prob = outputs["pred_logits"][b].softmax(-1)  # [num_queries, num_classes] number of COCO's categories
+            # logger.info(out_prob.shape) # 101
+            # exit()
+            tgt_ids = targets[b]["labels"] # integer label
+            # logger.info(out_prob.shape)
+            # logger.info(tgt_ids)
+            # exit()
             # Compute the classification cost. Contrary to the loss, we don't use the NLL,
             # but approximate it in 1 - proba[target class].
             # The 1 is a constant that doesn't change the matching, it can be ommitted.
@@ -126,8 +134,20 @@ class HungarianMatcher(nn.Module):
             # gt masks are already padded when preparing target
             tgt_mask = targets[b]["masks"].to(out_mask)
             
+            # logger.info("original")
+            # logger.info(out_mask.shape)
+            # logger.info(tgt_mask.shape)
+            # 101, 256, 256
+            # 5 1024 1024
             out_mask = out_mask[:, None]
             tgt_mask = tgt_mask[:, None]
+            
+            # logger.info(':None')
+            # logger.info(out_mask.shape)
+            # logger.info(tgt_mask.shape)
+            # 101 1 256 256
+            # 5 1 1024 1024
+            
             # all masks share the same set of points for efficient matching!
             point_coords = torch.rand(1, self.num_points, 2, device=out_mask.device, dtype=tgt_mask.dtype)
             # get gt labels
@@ -142,6 +162,12 @@ class HungarianMatcher(nn.Module):
                 point_coords.repeat(out_mask.shape[0], 1, 1),
                 align_corners=False,
             ).squeeze(1)
+            
+            # logger.info("sampled points")
+            # logger.info(out_mask.shape)
+            # logger.info(tgt_mask.shape)
+            # 101 12544
+            # 5 12544
 
             with autocast(enabled=False):
                 out_mask = out_mask.float()
@@ -577,6 +603,10 @@ class HungarianMatcher(nn.Module):
             For each batch element, it holds:
                 len(index_i) = len(index_j) = min(num_queries, num_target_boxes)
         """
+        # TODO
+        # logger.info(mode)
+        # exit() 
+        # 'default'
         if mode == 'default':
             return self.memory_efficient_forward(outputs, targets)
         elif mode == 'grounding':

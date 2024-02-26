@@ -21,9 +21,12 @@ from .prototype.attention_data_struct_seemv1 import AttentionDataStruct
 from ..utils import rand_sample, prepare_features, configurable
 from ..modules import PositionEmbeddingSine
 from ..modules.point_features import point_sample
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class SEEMDecoder(nn.Module):
+class SEEMDecoder(nn.Module): # predictor of sem_seg_head (xdecoderhead), predictor + language_encdoer
 
     @configurable
     def __init__(
@@ -134,6 +137,8 @@ class SEEMDecoder(nn.Module):
         self.lang_encoder = lang_encoder
         self.mask_embed = MLP(hidden_dim, hidden_dim, mask_dim, 3)
         self.class_embed = nn.Parameter(torch.empty(hidden_dim, dim_proj))
+        # logger.info(self.class_embed.shape) # 512 512
+        # exit()
         trunc_normal_(self.class_embed, std=.02)
 
         if task_switch['bbox']:
@@ -148,7 +153,7 @@ class SEEMDecoder(nn.Module):
 
             self.max_spatial_len = max_spatial_len
             # spatial memory
-            num_spatial_memories = attn_arch['SPATIAL_MEMORIES']
+            num_spatial_memories = attn_arch['SPATIAL_MEMORIES'] # 32, hyper
             self.spatial_embed = nn.Embedding(num_spatial_memories, hidden_dim)
             self.spatial_featured = nn.Embedding(num_spatial_memories, hidden_dim)
 
@@ -201,6 +206,11 @@ class SEEMDecoder(nn.Module):
     def forward(self, x, mask_features, mask=None, target_queries=None, target_vlp=None, task='seg', extra={}):
         # x is a list of multi-scale feature
         assert len(x) == self.num_feature_levels; del mask
+        # logger.info(task)
+        # spatial
+        # logger.info(extra.keys())
+        # ['grounding_tokens', 'grounding_nonzero_mask', 'spatial_query_pos_mask', 'spatial_query_neg_mask', 'false_positive_mask']
+        # exit()
         spatial_extra_flag = 'spatial_query_pos_mask' in extra.keys() or task == 'refimg' or 'refimg_tokens' in extra
         grounding_extra_flag = 'grounding_tokens' in extra.keys()
         spatial_memory_flag = 'prev_mask' in extra.keys()
@@ -215,8 +225,15 @@ class SEEMDecoder(nn.Module):
         output = self.query_feat.weight.unsqueeze(1).repeat(1, bs, 1)
         self.attention_data.set('queries_object', 'queries', output, query_embed)
 
+        # logging.info(self.task_switch) {'bbox': False, 'mask': True, 'spatial': True, 'grounding': True, 'openimage': {'grounding': False, 'mask': False}}
+        # exit()
         if self.task_switch['spatial'] and spatial_extra_flag:
             if 'refimg_tokens' not in extra:
+                # logger.info("Here")
+                # logger.info(extra.keys())
+                # torch.save(extra, 'extra.pt') -> 'extra.pt'
+                # logger.info("SUCCESS")
+                # exit()
                 # get divisor
                 c,h,w = extra['spatial_query_pos_mask'][0].shape
                 divisor = torch.tensor([1,h,w], device=output.device)[None,]
@@ -244,6 +261,11 @@ class SEEMDecoder(nn.Module):
                 src_spatial_queries = []
                 src_spatial_maskings = []
                 src_spatial_indices = []
+
+                # logger.info(self.mask_sptial_embed[0].shape) # 512 512
+                # logger.info(len(self.mask_sptial_embed)) # 3
+                # logger.info(len(src)) # 3
+                # exit()
                 for i in range(len(src)):
                     hw,_,dc = src[i].shape
                     src_mask_features = src[i].view(size_list[i][0],size_list[i][1],bs,dc)
@@ -302,6 +324,9 @@ class SEEMDecoder(nn.Module):
             self.attention_data.set_maskings('tokens_grounding', extra['grounding_nonzero_mask'])
 
         output, query_embed = self.attention_data.cross_attn_variables()
+        # logger.info(output.shape)
+        # logger.info(query_embed.shape)
+        # exit()
         # prediction heads on learnable query features
         results = self.forward_prediction_heads(output, mask_features, attn_mask_target_size=size_list[0])
         results["predictions_pos_spatial"] = spatial_query_pos.transpose(0,1) if spatial_extra_flag else None

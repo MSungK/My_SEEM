@@ -16,6 +16,9 @@ from ..utils import configurable
 from .LangEncoder import build_tokenizer, build_lang_encoder
 from utils.prompt_engineering import prompt_engineering, get_prompt_templates
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class LanguageEncoder(nn.Module):
 
@@ -182,6 +185,10 @@ class LanguageEncoder(nn.Module):
         v_emb = v_emb / (v_emb.norm(dim=-1, keepdim=True) + 1e-7)
         t_emb = getattr(self, '{}_text_embeddings'.format(name))
         output = self.logit_scale.exp() * v_emb @ t_emb.unsqueeze(0).transpose(1, 2)
+        # logger.info(v_emb.shape) 232 512
+        # logger.info(t_emb.shape) 134 512
+        # logger.info(output.shape) 232 134
+        # exit()
         return output
 
 

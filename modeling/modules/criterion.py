@@ -28,7 +28,7 @@ from ..utils.misc import is_dist_avail_and_initialized, nested_tensor_from_tenso
 from ..utils import box_ops
 
 # from image2html.visualizer import VL
-
+logger = logging.getLogger(__name__)
 
 def dice_loss(
         inputs: torch.Tensor,
@@ -119,6 +119,8 @@ class SetCriterion(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.matcher = matcher
+        # logger.info(self.matcher) # Hungarian Matcher, class, mask, dice
+        # exit()
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.top_x_layers = top_x_layers
@@ -724,8 +726,20 @@ class SetCriterion(nn.Module):
              targets: list of dicts, such that len(targets) == batch_size.
                       The expected keys in each dict depends on the losses applied, see each loss' doc
         """
+        # for key, value in outputs.items():
+        #     if isinstance(value, torch.Tensor):
+        #         logger.info(key)
+        #         logger.info(value.shape)
+        #     else:
+        #         logger.info('it is not tensor')
+        # exit()
+        # outputs
+        # pred_logits 101 134
+        # pred_masks 101 256 156
+        # pred_gmasks 101 256 256
         outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"}
 
+        # TODO
         # Retrieve the matching between the outputs of the last layer and the targets
         indices = self.matcher(outputs_without_aux, targets)
 

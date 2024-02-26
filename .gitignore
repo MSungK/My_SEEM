@@ -111,3 +111,9 @@ Config/*
 ./demo_code/*.pth
 *.pt
 *.pth
+
+# custom
+data/*
+pointrend.sh
+xdecoder_data/*
+zi60rii0

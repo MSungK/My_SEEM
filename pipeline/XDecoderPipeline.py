@@ -41,6 +41,9 @@ class XDecoderPipeline:
     def initialize_model(self):
         model_name = "default"
         model = build_model(self._opt)
+        # logger.info(model)
+        # exit()
+        # backbone + sem_seg_head (XdecoderHEad)
         model.train()
 
         if is_main_process():

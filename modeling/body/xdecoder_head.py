@@ -15,9 +15,12 @@ from .build import register_body
 from ..vision.encoder import build_encoder
 from ..interface import build_decoder
 from ..utils import configurable
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class XdecoderHead(nn.Module):
+class XdecoderHead(nn.Module): # sem_seg_head : pixel_decoder (TransformerEncoderPixelDecoder) + predictor (SEEEMDecoder) (+ lang_encoder (LanguageEncoder))
 
     @configurable
     def __init__(
@@ -56,6 +59,8 @@ class XdecoderHead(nn.Module):
 
         self.pixel_decoder = pixel_decoder
         self.predictor = transformer_predictor
+        # logger.info(self.predictor)
+        # exit()
         self.transformer_in_feature = transformer_in_feature
 
         self.num_classes = num_classes
@@ -100,7 +105,14 @@ class XdecoderHead(nn.Module):
 
     def layers(self, features, mask=None, target_queries=None, target_vlp=None, task='seg', extra={}):
         mask_features, transformer_encoder_features, multi_scale_features = self.pixel_decoder.forward_features(features)
-        
+        # TODO, 이유는 모르겠는데 개오래걸림 -> 안뜸 ㅅㅂ
+        # logger.info('===' * 30)
+        # logger.info(f'self.transformer_in_feature: {self.transformer_in_feature}')
+        # logger.info(f'features: {features.shape}')
+        # logger.info(f'mask_features: {mask_features.shape}')
+        # logger.info(f'transformer_encoder_features: {transformer_encoder_features.shape}')
+        # logger.info(f'multi_scale_features: {multi_scale_features.shape}')
+        # exit()
         if self.transformer_in_feature == "multi_scale_pixel_decoder":
             predictions = self.predictor(multi_scale_features, mask_features, mask, target_queries, target_vlp, task, extra)
         else:

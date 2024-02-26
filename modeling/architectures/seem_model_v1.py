@@ -28,6 +28,10 @@ from ..language.loss import vl_similarity
 from utils.prompt_engineering import prompt_engineering
 from utils.constants import COCO_PANOPTIC_CLASSES
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class GeneralizedSEEM(nn.Module):
 
@@ -86,7 +90,12 @@ class GeneralizedSEEM(nn.Module):
         """
         super().__init__()
         self.backbone = backbone
-        self.sem_seg_head = sem_seg_head
+        # logger.info(self.backbone)
+        # exit()
+        # backbone에 visual sampler 없음
+        self.sem_seg_head = sem_seg_head # XDecoderHead
+        # logger.info(self.sem_seg_head)
+        # exit()
         self.criterion = criterion
         self.losses = losses
         self.num_queries = num_queries
@@ -113,8 +122,8 @@ class GeneralizedSEEM(nn.Module):
 
         self.test_topk_per_image = test_topk_per_image
         self.train_class_names = get_class_names(train_dataset_name)
-        self.interactive_mode = interactive_mode
-        self.interactive_iter = interactive_iter
+        self.interactive_mode = interactive_mode # best
+        self.interactive_iter = interactive_iter # 20
 
         if not self.semantic_on:
             assert self.sem_seg_postprocess_before_inference
@@ -159,7 +168,9 @@ class GeneralizedSEEM(nn.Module):
         backbone = build_backbone(cfg)
         lang_encoder = build_language_encoder(cfg)        
         sem_seg_head = build_xdecoder_head(cfg, backbone.output_shape(), lang_encoder, extra=extra)
-
+        # XdecoderHead
+        # logger.info(sem_seg_head)
+        # exit()
         # building criterion
         matcher = HungarianMatcher(
             cost_class=loss_weights['mask']['ce'],
@@ -171,6 +182,8 @@ class GeneralizedSEEM(nn.Module):
 
         # init weight dict and criterion loss functions.
         losses = {'seg': [], 'openimage': []}
+        # logger.info(task_switch.items()) # Same 
+        # exit()
         if task_switch['mask']:
             losses['seg'] += ["labels", "masks"]
         if task_switch['spatial']:
@@ -217,7 +230,6 @@ class GeneralizedSEEM(nn.Module):
             importance_sample_ratio=dec_cfg['IMPORTANCE_SAMPLE_RATIO'],
             grounding_weight=grd_weight,
         )
-
         # extra logistic
         train_dataset_name = cfg['DATASETS']['TRAIN'][0] # HACK for only one training set.
         train_max_iter = dec_cfg['SPATIAL'].get('MAX_ITER', 3)
@@ -289,8 +301,12 @@ class GeneralizedSEEM(nn.Module):
                     segments_info (list[dict]): Describe each segment in `panoptic_seg`.
                         Each dict contains keys "id", "category_id", "isthing".
         """
+        
         if self.training:
             losses = {}
+            # logger.info(self.task_switch.items())
+            # dict_items([('bbox', False), ('mask', True), ('spatial', True), ('grounding', True), ('openimage', {'grounding': False, 'mask': False})])
+            # exit()
             if self.task_switch['mask'] or self.task_switch['grounding'] or self.task_switch['spatial']:
                 losses_seg = self.forward_seg(batched_inputs)
                 losses.update(losses_seg)
@@ -321,17 +337,24 @@ class GeneralizedSEEM(nn.Module):
     def forward_seg(self, batched_inputs):
         images = [x["image"].to(self.device) for x in batched_inputs]
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
-        images = ImageList.from_tensors(images, self.size_divisibility)
-
+        images = ImageList.from_tensors(images, self.size_divisibility) # 3 1024 1024
+        # torch.save(images, 'images.pt')
+        # exit()
         self.sem_seg_head.predictor.lang_encoder.get_text_embeddings(self.train_class_names, is_eval=False)
 
         extra = {}
+        # TODO
         # mask classification target
         if "instances" in batched_inputs[0]:
             # input bounding box is checked to be correct.
             targets = self.prepare_targets(batched_inputs, images)
-
-            if self.task_switch['grounding']:
+            # TODO, targets 정보 저장
+            # torch.save(targets, 'targets.pt')
+            # logger.info("SUCCESS" * 10)
+            # exit()
+            # logger.info(self.task_switch.items())
+            # exit()
+            if self.task_switch['grounding']: # True
                 grounding_tokens = [x['grounding_query_embs'] for x in targets] # need to pad for more than one grounding token
                 grounding_tokens = nn.utils.rnn.pad_sequence(grounding_tokens, padding_value=-1)
                 non_zero_query_mask = (grounding_tokens.sum(dim=-1) == -grounding_tokens.shape[-1])
@@ -340,16 +363,23 @@ class GeneralizedSEEM(nn.Module):
                 extra['grounding_tokens'] = grounding_tokens
                 extra['grounding_nonzero_mask'] = non_zero_query_mask.t()
 
-            if self.task_switch['spatial']:
+            if self.task_switch['spatial']: # True
                 pos_masks = [x['spatial_query']['rand_shape'].to(self.device) for x in batched_inputs]
                 neg_masks = [(x['spatial_query']['rand_shape'].to(self.device) & False) for x in batched_inputs]
+                # logger.info(pos_masks[0].shape) # 5 1024 1024
+                # logger.info(neg_masks[0].shape) # 5 1024 1024
+                # exit()
                 fp_masks = nn.utils.rnn.pad_sequence([(x['spatial_query']['rand_shape'].to(self.device) & False) for x in batched_inputs], padding_value=False, batch_first=True)
                 extra.update({'spatial_query_pos_mask': pos_masks, 'spatial_query_neg_mask': neg_masks, 'false_positive_mask': fp_masks})
 
+        # torch.save(extra, 'extra.pt')
+        # logger.info('SUCCUESS' * 10)
+        # exit()
         features = self.backbone(images.tensor)
         mask_features, _, multi_scale_features = self.sem_seg_head.pixel_decoder.forward_features(features)
 
         # forward spatial only without gradient
+        # TODO
         if self.task_switch['spatial']:
             with torch.no_grad():
                 # generate random integeter between [0,3]
@@ -360,7 +390,13 @@ class GeneralizedSEEM(nn.Module):
                     extra.update(self.prepare_next_spaital_mask(extra, batched_inputs))
 
         outputs = self.sem_seg_head.predictor(multi_scale_features, mask_features, extra=extra, task='seg')
-
+        # for key, value in outputs.items():
+        #     logger.info(key)
+        #     if isinstance(value, torch.Tensor):
+        #         logger.info(value.shape)
+        #     else:
+        #         logger.info('It is not tensor')
+        # exit()
         extra = {'lang_logit': self.sem_seg_head.predictor.lang_encoder.logit_scale,
                  'class_embeddings': getattr(self.sem_seg_head.predictor.lang_encoder, '{}_text_embeddings'.format('default')),
                  'false_positive_mask': extra['false_positive_mask']}
@@ -467,11 +503,18 @@ class GeneralizedSEEM(nn.Module):
         query_index = self.sem_seg_head.predictor.query_index
         if self.interactive_mode in ['best', 'best_random']:
             pos_masks = [x['spatial_query']['rand_shape'].to(self.device)[:,0] for x in batched_inputs]
+
             pos_masks = ImageList.from_tensors(pos_masks, self.size_divisibility).tensor.unbind(0)
 
             neg_masks = [(x['spatial_query']['rand_shape'].to(self.device) & False)[:,0] for x in batched_inputs]
     
             neg_masks = ImageList.from_tensors(neg_masks, self.size_divisibility).tensor.unbind(0)
+            
+            # TODO
+            # logger.info(pos_masks)
+            # logger.info(neg_masks)
+            # logger.info()
+            # exit()
             extra.update({'spatial_query_pos_mask': pos_masks, 'spatial_query_neg_mask': neg_masks})
         elif self.interactive_mode == 'random':
             assert False, "interactive mode not correctly implemented"
@@ -928,6 +971,11 @@ class GeneralizedSEEM(nn.Module):
                 grd_texts = batch_per_image['groundings']['texts']
                 grd_hash = batch_per_image['groundings']['hash']
                 grd_task = batch_per_image['groundings']['mode']
+                # logger.info(grd_masks.shape) 4 1024 1024
+                # logger.info(len(grd_texts)) 4
+                # logger.info(len(grd_hash)) 4 
+                # logger.info(grd_task) class
+                # exit()
                 
                 if len(grd_masks) == 0:
                     padded_masks = None
@@ -951,6 +999,9 @@ class GeneralizedSEEM(nn.Module):
                 class_idx = torch.stack((torch.arange(len(class_idx), device=class_idx.device), class_idx)).tolist()
                 class_emb = token_emb[class_idx]
                 
+                # logger.info(query_emb.shape) # 9 512
+                # logger.info(class_emb.shape) # 1 512
+                # exit()
                 target_dict['grounding_masks'] = padded_masks
                 target_dict['grounding_query_embs'] = query_emb
                 target_dict['grounding_class_embs'] = class_emb

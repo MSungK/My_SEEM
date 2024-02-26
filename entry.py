@@ -13,7 +13,8 @@ import wandb
 
 from utils.arguments import load_opt_command
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(filename)s - line %(lineno)d \n%(message)s',
+                    level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def init_wandb(args, job_dir, entity='xueyanz', project='xdecoder', job_name='tmp'):

@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import logging
+
+logger = logging.getLogger(__name__)
 
 predict_name_matcher = {"predictions_class": ["pred_logits"],
                         "predictions_mask":["pred_masks", "pred_gmasks", "pred_smasks"],
@@ -163,7 +166,11 @@ class AttentionDataStruct(nn.Module):
                            if (value==True) and (key in self.attn_variables) 
                            and ((key not in self.flags) or (key in self.flags and self.flags[key]==True))]
         self.cross_attn_name = cross_attn_name
-
+        # logger.info(cross_attn_name) # ['queries_object', 'queries_grounding', 'queries_spatial']
+        # exit()
+        # for name in cross_attn_name:
+        #     logger.info(self.attn_variables[name].output.shape) # 101 101 9
+        # exit()
         output = torch.cat([self.attn_variables[name].output for name in cross_attn_name])
         pos_emb = torch.cat([self.attn_variables[name].pos for name in cross_attn_name])
         
@@ -197,7 +204,10 @@ class AttentionDataStruct(nn.Module):
                           if len(value)>0 and key in self.attn_variables
                           and ((key not in self.flags) or (key in self.flags and self.flags[key]==True))]
         self.self_attn_name = self_attn_name
-
+        # logger.info(self_attn_name) ['queries_object', 'queries_grounding', 'queries_spatial', 'tokens_grounding', 'tokens_spatial']
+        # for name in self_attn_name: 101 101 30 20 512
+        #     logger.info(self.attn_variables[name].output.shape)
+        # exit()
         output = torch.cat([self.attn_variables[name].output for name in self_attn_name])
         pos_emb = torch.cat([self.attn_variables[name].pos for name in self_attn_name])
 

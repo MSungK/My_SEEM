@@ -16,6 +16,10 @@ from .circle import Circle
 
 from modeling.utils import configurable
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class SimpleClickSampler(nn.Module):
     @configurable
@@ -237,6 +241,8 @@ class SimpleClickSampler(nn.Module):
         return {'gt_masks': instances.gt_masks.tensor, 'rand_shape': rand_shapes[:,None], 'types': types}
 
     def forward(self, instances, *args, **kwargs):
+        logger.info(self.mask_mode)
+        exit()
         if self.mask_mode == 'Point':
             return self.forward_point(instances, *args, **kwargs)
         elif self.mask_mode == 'Circle':
